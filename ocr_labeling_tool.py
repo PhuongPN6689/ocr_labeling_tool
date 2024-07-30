@@ -32,7 +32,7 @@ class OCRLabelingTool(tk.Tk):
 
         # Thiết lập cửa sổ chính
         self.title("OCR Labeling Tool")
-        self.geometry("1100x600")
+        self.geometry("1200x700")
 
         # Biến để lưu trữ các thông tin cần thiết
         self.image = None
@@ -85,12 +85,6 @@ class OCRLabelingTool(tk.Tk):
         help_button = tk.Button(left_frame, text="Help", command=self.help_click)
         help_button.pack(pady=5, fill="x")
 
-        tk.Frame(left_frame).pack(fill="x", pady=15)
-
-        tk.Label(left_frame, text="Log").pack(padx=5)
-        self.status_label = tk.Text(left_frame, height=15, width=25)
-        self.status_label.pack(fill="both", padx=5, pady=5)
-
         # Cột 2: Khu vực trung tâm
         center_frame = tk.Frame(self)
         center_frame.pack(side="left", expand=True, fill="both", padx=10, pady=5)
@@ -102,8 +96,7 @@ class OCRLabelingTool(tk.Tk):
         tk.Label(zoom_frame, text="Zoom:").pack(side="left", padx=5)
 
         for zoom in ["Auto", "50%", "100%", "150%", "200%", "300%"]:
-            radio = tk.Radiobutton(zoom_frame, text=zoom, variable=self.zoom_level, value=zoom,
-                                   command=self.display_image_click)
+            radio = tk.Radiobutton(zoom_frame, text=zoom, variable=self.zoom_level, value=zoom, command=self.display_image_click)
             radio.pack(side="left", padx=5)
 
         tk.Frame(zoom_frame).pack(side="left", fill="x")
@@ -142,28 +135,41 @@ class OCRLabelingTool(tk.Tk):
         right_frame = tk.Frame(self, width=400)
         right_frame.pack(side="right", fill="y", padx=5, pady=5)
 
-        label_right_frame = tk.Frame(right_frame)
-        label_right_frame.pack(fill="x")
-
-        tk.Label(label_right_frame, text="List image").pack(side="left", padx=5)
-        tk.Frame(label_right_frame).pack(side="right", fill="x")
-
-        copy_filename_button = tk.Button(label_right_frame, text="Copy filename", command=self.copy_filename_click)
-        copy_filename_button.pack(side="right", padx=5, pady=5)
+        # Label bên trái
+        tk.Label(right_frame, text="List image").grid(column=0, row=0, pady=5, sticky="w")
 
         # Tạo khung chứa Listbox và thanh cuộn
-        listbox_frame = tk.Frame(right_frame)
-        listbox_frame.pack(fill="both", expand=True, padx=5, pady=5)
+        listbox_frame_2 = tk.Frame(right_frame)
+        listbox_frame_2.grid(column=0, row=1, pady=5, sticky="nsew")
 
         # Tạo Listbox
-        self.file_listbox = tk.Listbox(listbox_frame, height=20)  # Điều chỉnh chiều cao theo ý muốn
-        self.file_listbox.pack(side="left", fill="both", expand=True)
+        self.file_listbox = tk.Listbox(listbox_frame_2, width=50)
         self.file_listbox.bind('<<ListboxSelect>>', self.on_image_select)
+        self.file_listbox.pack(side="left", fill="both", expand=True)
 
-        scrollbar = tk.Scrollbar(listbox_frame, orient="vertical")
+        scrollbar = tk.Scrollbar(listbox_frame_2, orient="vertical")
         scrollbar.pack(side="right", fill="y")
         self.file_listbox.config(yscrollcommand=scrollbar.set)
         scrollbar.config(command=self.file_listbox.yview)
+
+        tk.Label(right_frame, text="Log").grid(column=0, row=2, pady=5, sticky="w")
+
+        listbox_frame_1 = tk.Frame(right_frame)
+        listbox_frame_1.grid(column=0, row=3, pady=5, sticky="nsew")
+
+        self.status_label = tk.Text(listbox_frame_1, width=38)
+        self.status_label.pack(side="left", fill="both", expand=True)
+
+        scrollbar_1 = tk.Scrollbar(listbox_frame_1, orient="vertical")
+        scrollbar_1.pack(side="right", fill="y")
+        self.status_label.config(yscrollcommand=scrollbar_1.set)
+        scrollbar_1.config(command=self.status_label.yview)
+
+        # Đảm bảo các hàng 1 và 3 có thể mở rộng đều nhau
+        right_frame.rowconfigure(1, weight=1)
+        right_frame.rowconfigure(3, weight=1)
+        right_frame.columnconfigure(0, weight=1)
+
 
     def on_model_change(self, _):
         self.add_log("Loading OCR model")
@@ -242,15 +248,15 @@ class OCRLabelingTool(tk.Tk):
             self.image_list = [f for f in os.listdir(self.image_folder) if f.lower().endswith(('png', 'jpg', 'jpeg'))]
             # Hiển thị lên listbox
             self.file_listbox.delete(0, tk.END)
-            for image_filename in self.image_list:
-                self.file_listbox.insert(tk.END, image_filename)
+            for i, image_filename in enumerate(self.image_list):
+                self.file_listbox.insert(tk.END, f"{i + 1}) {image_filename}")
 
     def display_image_click(self):
         # Hiển thị ảnh hiện tại với kích thước và zoom phù hợp
         if self.image_list and 0 <= self.current_image_index < len(self.image_list):
             self.image_filename = self.image_list[self.current_image_index]
             self.title(f"OCR Labeling Tool ({self.current_image_index + 1}/{len(self.image_list)}) - {self.image_filename}")
-            self.add_log(f"Display image: {self.image_filename}")
+            self.add_log(f"Open: {self.image_filename}")
             image_path = os.path.join(self.image_folder, self.image_filename)
             image = Image.open(image_path)
             self.image = copy.deepcopy(image)
