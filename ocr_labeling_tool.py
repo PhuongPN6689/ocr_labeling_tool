@@ -1,7 +1,7 @@
 import copy
 import json
 import tkinter as tk
-from tkinter import filedialog, messagebox
+from tkinter import filedialog, messagebox, ttk
 from PIL import Image, ImageTk
 import os
 
@@ -32,13 +32,13 @@ class OCRLabelingTool(tk.Tk):
 
         # Thiết lập cửa sổ chính
         self.title("OCR Labeling Tool")
-        self.geometry("1000x600")
+        self.geometry("1100x600")
 
         # Biến để lưu trữ các thông tin cần thiết
         self.image = None
         self.image_filename = None
         self.image_folder = None
-        self.old_label_value = None
+        self.old_label_value = ''
         self.label_folder = None
         self.image_list = []
         self.current_image_index = 0
@@ -46,8 +46,8 @@ class OCRLabelingTool(tk.Tk):
         self.zoom_level = tk.StringVar(value="Auto")
         self.fixed_canvas_size = (600, 500)  # Kích thước cố định cho khu vực hiển thị ảnh
         self.model_name = None
-        self.selected_model = tk.StringVar(value="None")
         self.ocr_model = None
+        self.log = []
 
         # Gọi các phương thức để tạo các thành phần giao diện
         self.create_widgets()
@@ -55,7 +55,7 @@ class OCRLabelingTool(tk.Tk):
 
     def create_widgets(self):
         # Cột 1: Khu vực bên trái
-        left_frame = tk.Frame(self, width=200)
+        left_frame = tk.Frame(self)
         left_frame.pack(side="left", fill="y", padx=10, pady=5)
 
         open_image_folder_button = tk.Button(left_frame, text="Open Image Folder", compound=tk.TOP, command=self.open_image_folder_click)
@@ -67,26 +67,29 @@ class OCRLabelingTool(tk.Tk):
         reload_button = tk.Button(left_frame, text="Reload Files", compound=tk.TOP, command=self.load_images_click)
         reload_button.pack(pady=5, fill="x")
 
-        tk.Label(left_frame, text=' ').pack(fill="x", pady=5)
+        tk.Frame(left_frame).pack(fill="x", pady=15)
 
         # Dropdown OCR model options
-        tk.Label(left_frame, text="OCR Model:").pack(pady=5)
+        tk.Label(left_frame, text="OCR Model").pack()
         options = ["None", "VietOCR", "EasyOCR", "Tesseract"]
-        self.model_dropdown = tk.OptionMenu(left_frame, self.selected_model, *options, command=self.on_model_change)
-        self.model_dropdown.pack(pady=5, fill="x")
+        self.model_dropdown = ttk.Combobox(left_frame, values=options)
+        self.model_dropdown.bind("<<ComboboxSelected>>", self.on_model_change)
+        self.model_dropdown.set(options[0])
+        self.model_dropdown.pack(fill="x")
 
         auto_ocr_all_button = tk.Button(left_frame, text="Auto OCR All File", command=self.auto_ocr_all_click)
-        auto_ocr_all_button.pack(pady=5, fill="x")
+        auto_ocr_all_button.pack(pady=10, fill="x")
 
-        tk.Label(left_frame, text=' ').pack(fill="x", pady=5)
+        tk.Frame(left_frame).pack(fill="x", pady=15)
 
         help_button = tk.Button(left_frame, text="Help", command=self.help_click)
         help_button.pack(pady=5, fill="x")
 
-        tk.Label(left_frame, text=' ').pack(fill="x", pady=5)
+        tk.Frame(left_frame).pack(fill="x", pady=15)
 
-        self.status_label = tk.Label(left_frame, text="", relief=tk.SUNKEN, anchor='w')
-        self.status_label.pack(side=tk.BOTTOM, fill=tk.X, padx=5, pady=5)
+        tk.Label(left_frame, text="Log").pack(padx=5)
+        self.status_label = tk.Text(left_frame, height=15, width=25)
+        self.status_label.pack(fill="both", padx=5, pady=5)
 
         # Cột 2: Khu vực trung tâm
         center_frame = tk.Frame(self)
@@ -145,6 +148,9 @@ class OCRLabelingTool(tk.Tk):
         tk.Label(label_right_frame, text="List image").pack(side="left", padx=5)
         tk.Frame(label_right_frame).pack(side="right", fill="x")
 
+        copy_filename_button = tk.Button(label_right_frame, text="Copy filename", command=self.copy_filename_click)
+        copy_filename_button.pack(side="right", padx=5, pady=5)
+
         # Tạo khung chứa Listbox và thanh cuộn
         listbox_frame = tk.Frame(right_frame)
         listbox_frame.pack(fill="both", expand=True, padx=5, pady=5)
@@ -154,21 +160,18 @@ class OCRLabelingTool(tk.Tk):
         self.file_listbox.pack(side="left", fill="both", expand=True)
         self.file_listbox.bind('<<ListboxSelect>>', self.on_image_select)
 
-        # Tạo Scrollbar và liên kết với Listbox
         scrollbar = tk.Scrollbar(listbox_frame, orient="vertical")
         scrollbar.pack(side="right", fill="y")
-
-        # Liên kết Scrollbar với Listbox
         self.file_listbox.config(yscrollcommand=scrollbar.set)
         scrollbar.config(command=self.file_listbox.yview)
 
     def on_model_change(self, _):
-        self.update_status("Loading OCR model")
-        self.model_name = self.selected_model.get()
+        self.add_log("Loading OCR model")
+        self.model_name = self.model_dropdown.get()
         self.ocr_model = load_ocr_model(self.model_name)
-        self.update_status("")
+        self.add_log("OCR model loaded")
 
-    def run_ocr(self, image):
+    def run_ocr(self, image: Image):
         if self.model_name == "VietOCR":
             return self.ocr_model.predict(image)
         elif self.model_name == "EasyOCR":
@@ -183,8 +186,13 @@ class OCRLabelingTool(tk.Tk):
         self.text_entry.delete(0, tk.END)
         self.text_entry.insert(0, self.old_label_value)
 
-    def update_status(self, message):
-        self.status_label.config(text=message)
+    def add_log(self, message):
+        self.log.append(message)
+        while len(self.log) > 100:
+            self.log.pop(0)
+        self.status_label.delete(1.0, tk.END)
+        for log in self.log[::-1]:
+            self.status_label.insert(tk.END, "⇨" + log + "\n")
         self.update()
 
     def bind_keys(self):
@@ -206,6 +214,8 @@ class OCRLabelingTool(tk.Tk):
         if folder_path is None or len(folder_path) == 0:
             return
 
+        self.add_log(f"Open image folder: {folder_path}")
+
         is_new_img_folder = True
         if folder_path == self.image_folder:
             is_new_img_folder = False
@@ -224,6 +234,7 @@ class OCRLabelingTool(tk.Tk):
         folder_path = filedialog.askdirectory()
         if folder_path:
             self.label_folder = folder_path
+            self.add_log(f"Open label folder: {folder_path}")
 
     def load_images_click(self):
         # Load danh sách ảnh
@@ -239,6 +250,7 @@ class OCRLabelingTool(tk.Tk):
         if self.image_list and 0 <= self.current_image_index < len(self.image_list):
             self.image_filename = self.image_list[self.current_image_index]
             self.title(f"OCR Labeling Tool ({self.current_image_index + 1}/{len(self.image_list)}) - {self.image_filename}")
+            self.add_log(f"Display image: {self.image_filename}")
             image_path = os.path.join(self.image_folder, self.image_filename)
             image = Image.open(image_path)
             self.image = copy.deepcopy(image)
@@ -276,6 +288,7 @@ class OCRLabelingTool(tk.Tk):
         # Chuyển sang ảnh tiếp theo
         if self.current_image_index < len(self.image_list) - 1:
             self.current_image_index += 1
+            self.add_log(f"Next image")
             self.display_image_click()
 
     def prev_image_click(self):
@@ -290,6 +303,7 @@ class OCRLabelingTool(tk.Tk):
         # Chuyển về ảnh trước đó
         if self.current_image_index > 0:
             self.current_image_index -= 1
+            self.add_log(f"Previous image")
             self.display_image_click()
 
     def set_text_entry_value(self, text: str):
@@ -309,6 +323,12 @@ class OCRLabelingTool(tk.Tk):
         text = self.run_ocr(self.image)
         self.set_text_entry_value(text)
 
+    def copy_filename_click(self):
+        if self.image_filename:
+            self.clipboard_clear()
+            self.clipboard_append(self.image_filename)
+            self.update()
+
     @staticmethod
     def help_click():
         messagebox.showinfo("Help", "Open Image Folder: Open folder contains images\n"
@@ -327,20 +347,23 @@ class OCRLabelingTool(tk.Tk):
         if not self.image_list:
             return
 
-        self.update_status("Auto OCR all files...")
+        self.add_log("Auto OCR all files...")
         count = 0
         for image_filename in self.image_list:
             count += 1
-            self.update_status(f"Auto OCR {count}/{len(self.image_list)}")
+            self.add_log(f"Auto OCR {count}/{len(self.image_list)}")
             label = self.load_label_file(image_filename)
             if label is None or label == "":
                 image_path = os.path.join(self.image_folder, image_filename)
                 image = Image.open(image_path)
                 text = self.run_ocr(image)
                 self.save_label_file(image_filename, text)
-        self.update_status("")
+        self.add_log("Auto OCR all files done")
 
     def save_label_file(self, image_filename: str, text: str):
+        if self.label_folder is None and self.image_folder is None:
+            return
+        self.add_log(f"Save label for {image_filename}")
         json_path = os.path.join(self.label_folder, image_filename.rsplit(".", maxsplit=1)[0] + ".json")
         content = {
             "image_path": image_filename,
