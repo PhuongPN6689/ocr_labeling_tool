@@ -11,7 +11,7 @@ def load_ocr_model(model_name):
         from vietocr.tool.config import Cfg
         from vietocr.tool.predictor import Predictor
         config = Cfg.load_config_from_name('vgg_seq2seq')
-        config['device'] = 'cpu'  # Use CPU for this example
+        config['device'] = 'cpu'
         return Predictor(config)
 
     elif model_name == "EasyOCR":
@@ -38,8 +38,9 @@ class OCRLabelingTool(tk.Tk):
         self.image = None
         self.image_filename = None
         self.image_folder = None
-        self.old_label_value = ''
         self.label_folder = None
+        self.recycle_bin_folder = None
+        self.old_label_value = ''
         self.image_list = []
         self.current_image_index = 0
         self.auto_save = tk.BooleanVar()
@@ -62,6 +63,9 @@ class OCRLabelingTool(tk.Tk):
         open_image_folder_button.pack(pady=5, fill="x")
 
         open_label_folder_button = tk.Button(left_frame, text="Open Label Folder", compound=tk.TOP, command=self.open_label_folder_click)
+        open_label_folder_button.pack(pady=5, fill="x")
+
+        open_label_folder_button = tk.Button(left_frame, text="Open Recycle Bin Folder", compound=tk.TOP, command=self.open_recycle_bin_click)
         open_label_folder_button.pack(pady=5, fill="x")
 
         reload_button = tk.Button(left_frame, text="Reload Files", compound=tk.TOP, command=self.load_images_click)
@@ -127,6 +131,9 @@ class OCRLabelingTool(tk.Tk):
         auto_ocr_button = tk.Button(button_frame, text="Auto OCR", command=self.auto_ocr_click)
         auto_ocr_button.pack(side="right", padx=5, pady=5)
 
+        save_button = tk.Button(button_frame, text="Delete", command=self.delete_img_click)
+        save_button.pack(side="right", padx=5, pady=5)
+
         # Khu vực hiển thị ảnh với kích thước cố định
         self.canvas = tk.Canvas(center_frame, width=self.fixed_canvas_size[0], height=self.fixed_canvas_size[1])
         self.canvas.pack()
@@ -169,7 +176,6 @@ class OCRLabelingTool(tk.Tk):
         right_frame.rowconfigure(1, weight=1)
         right_frame.rowconfigure(3, weight=1)
         right_frame.columnconfigure(0, weight=1)
-
 
     def on_model_change(self, _):
         self.add_log("Loading OCR model")
@@ -229,6 +235,8 @@ class OCRLabelingTool(tk.Tk):
         self.image_folder = folder_path
         if self.label_folder is None:
             self.label_folder = folder_path
+        if self.recycle_bin_folder is None:
+            self.recycle_bin_folder = (folder_path + "/recycle_bin").replace("\\", "/").replace("//", "/")
 
         if is_new_img_folder:
             self.current_image_index = 0
@@ -241,6 +249,13 @@ class OCRLabelingTool(tk.Tk):
         if folder_path:
             self.label_folder = folder_path
             self.add_log(f"Open label folder: {folder_path}")
+
+    def open_recycle_bin_click(self):
+        # Mở thư mục chứa nhãn
+        folder_path = filedialog.askdirectory()
+        if folder_path:
+            self.recycle_bin_folder = folder_path
+            self.add_log(f"Open recycle bin folder: {folder_path}")
 
     def load_images_click(self):
         # Load danh sách ảnh
@@ -321,6 +336,35 @@ class OCRLabelingTool(tk.Tk):
         self.save_label_file(self.image_filename, self.text_entry.get())
         self.old_label_value = self.text_entry.get()
 
+    @staticmethod
+    def get_label_filename(image_filename):
+        return image_filename.rsplit(".", maxsplit=1)[0] + ".json"
+
+    def delete_img_click(self):
+        if self.recycle_bin_folder is None or self.recycle_bin_folder == "" or self.image_folder is None or self.image_folder == "":
+            messagebox.showerror("Error", "Recycle bin folder is not set")
+            return
+        if not messagebox.askyesno("Delete Image", "Do you want to delete this image?"):
+            return
+
+        if not os.path.exists(self.recycle_bin_folder):
+            os.makedirs(self.recycle_bin_folder)
+
+        if self.image_filename:
+            self.add_log(f"Delete {self.image_filename}")
+            # delete image
+            image_path = os.path.join(self.image_folder, self.image_filename)
+            recycle_bin_path = os.path.join(self.recycle_bin_folder, self.image_filename)
+            os.rename(image_path, recycle_bin_path)
+            # delete label
+            label_filename = self.get_label_filename(self.image_filename)
+            label_path = os.path.join(self.label_folder, label_filename)
+            if os.path.exists(label_path):
+                recycle_bin_label_path = os.path.join(self.recycle_bin_folder, label_filename)
+                os.rename(label_path, recycle_bin_label_path)
+            self.load_images_click()
+            self.display_image_click()
+
     def auto_ocr_click(self):
         if self.image is None:
             return
@@ -367,10 +411,11 @@ class OCRLabelingTool(tk.Tk):
         self.add_log("Auto OCR all files done")
 
     def save_label_file(self, image_filename: str, text: str):
-        if self.label_folder is None and self.image_folder is None:
+        if self.label_folder is None or self.label_folder == "" or self.image_folder is None or self.image_folder == "":
+            messagebox.showerror("Error", "Image folder or Label folder is not set")
             return
         self.add_log(f"Save label for {image_filename}")
-        json_path = os.path.join(self.label_folder, image_filename.rsplit(".", maxsplit=1)[0] + ".json")
+        json_path = os.path.join(self.label_folder, self.get_label_filename(image_filename))
         content = {
             "image_path": image_filename,
             "label": text
@@ -379,7 +424,7 @@ class OCRLabelingTool(tk.Tk):
             f.write(json.dumps(content))
 
     def load_label_file(self, image_filename):
-        json_path = os.path.join(self.label_folder, image_filename.rsplit(".", maxsplit=1)[0] + ".json")
+        json_path = os.path.join(self.label_folder, self.get_label_filename(image_filename))
         if os.path.exists(json_path):
             with open(json_path, 'r') as f:
                 content = json.load(f)
