@@ -32,7 +32,7 @@ class OCRLabelingTool(tk.Tk):
 
         # Thiết lập cửa sổ chính
         self.title("OCR Labeling Tool")
-        self.geometry("1200x700")
+        self.geometry("1400x700")
 
         # Biến để lưu trữ các thông tin cần thiết
         self.image = None
@@ -45,7 +45,7 @@ class OCRLabelingTool(tk.Tk):
         self.current_image_index = 0
         self.auto_save = tk.BooleanVar()
         self.zoom_level = tk.StringVar(value="Auto")
-        self.fixed_canvas_size = (600, 500)  # Kích thước cố định cho khu vực hiển thị ảnh
+        self.fixed_canvas_size = (800, 400)  # Kích thước cố định cho khu vực hiển thị ảnh
         self.model_name = None
         self.ocr_model = None
         self.log = []
@@ -53,6 +53,9 @@ class OCRLabelingTool(tk.Tk):
         # Gọi các phương thức để tạo các thành phần giao diện
         self.create_widgets()
         self.bind_keys()
+
+        self.bind("<Configure>", self.on_resize)
+        self.resize_after_id = None
 
     def create_widgets(self):
         # Cột 1: Khu vực bên trái
@@ -92,6 +95,7 @@ class OCRLabelingTool(tk.Tk):
         # Cột 2: Khu vực trung tâm
         center_frame = tk.Frame(self)
         center_frame.pack(side="left", expand=True, fill="both", padx=10, pady=5)
+        self.center_frame = center_frame
 
         # Tùy chọn zoom
         zoom_frame = tk.Frame(center_frame)
@@ -99,7 +103,7 @@ class OCRLabelingTool(tk.Tk):
 
         tk.Label(zoom_frame, text="Zoom:").pack(side="left", padx=5)
 
-        for zoom in ["Auto", "50%", "100%", "150%", "200%", "300%"]:
+        for zoom in ["Auto", "50%", "100%", "200%", "400%", "600%", "800%"]:
             radio = tk.Radiobutton(zoom_frame, text=zoom, variable=self.zoom_level, value=zoom, command=self.display_image_click)
             radio.pack(side="left", padx=5)
 
@@ -176,6 +180,20 @@ class OCRLabelingTool(tk.Tk):
         right_frame.rowconfigure(1, weight=1)
         right_frame.rowconfigure(3, weight=1)
         right_frame.columnconfigure(0, weight=1)
+
+    def on_resize(self, _):
+        print('resize_after_id', self.resize_after_id)
+        self.fixed_canvas_size = (self.center_frame.winfo_width() - 25, self.center_frame.winfo_height() - 110)
+        self.canvas.config(width=self.fixed_canvas_size[0], height=self.fixed_canvas_size[1])
+
+        if self.resize_after_id:
+            print('cancel')
+            self.after_cancel(self.resize_after_id)
+        self.resize_after_id = self.after(50, self.perform_resize)
+
+    def perform_resize(self):
+        print('perform_resize')
+        self.display_image_click()
 
     def on_model_change(self, _):
         self.add_log("Loading OCR model")
@@ -267,10 +285,10 @@ class OCRLabelingTool(tk.Tk):
                 self.file_listbox.insert(tk.END, f"{i + 1}) {image_filename}")
 
     def display_image_click(self):
-        # Hiển thị ảnh hiện tại với kích thước và zoom phù hợp
         if self.image_list and 0 <= self.current_image_index < len(self.image_list):
             self.image_filename = self.image_list[self.current_image_index]
-            self.title(f"OCR Labeling Tool ({self.current_image_index + 1}/{len(self.image_list)}) - {self.image_filename}")
+            self.title(
+                f"OCR Labeling Tool ({self.current_image_index + 1}/{len(self.image_list)}) - {self.image_filename}")
             self.add_log(f"Open: {self.image_filename}")
             image_path = os.path.join(self.image_folder, self.image_filename)
             image = Image.open(image_path)
@@ -279,21 +297,26 @@ class OCRLabelingTool(tk.Tk):
             self.old_label_value = self.load_label_file(self.image_filename)
             self.set_text_entry_value(self.old_label_value)
 
-            # Xử lý chế độ zoom
+            # Handle zoom level
             zoom_value = self.zoom_level.get()
             if zoom_value == "Auto":
-                image.thumbnail(self.fixed_canvas_size, Image.Resampling.LANCZOS)
+                zoom_percentage = 300
+                image = image.resize(
+                    (int(image.width * zoom_percentage / 100), int(image.height * zoom_percentage / 100)),
+                    Image.Resampling.LANCZOS
+                )
+                if image.width > self.fixed_canvas_size[0] or image.height > self.fixed_canvas_size[1]:
+                    image.thumbnail(self.fixed_canvas_size, Image.Resampling.LANCZOS)
             else:
                 zoom_percentage = int(zoom_value.replace("%", ""))
                 image = image.resize(
                     (int(image.width * zoom_percentage / 100), int(image.height * zoom_percentage / 100)),
                     Image.Resampling.LANCZOS)
 
-            # Hiển thị ảnh lên canvas
+            # Display image on canvas
             self.canvas_image = ImageTk.PhotoImage(image)
             self.canvas.create_image(self.fixed_canvas_size[0] // 2, self.fixed_canvas_size[1] // 2,
                                      image=self.canvas_image, anchor='center')
-
         else:
             self.title("OCR Labeling Tool")
 
