@@ -1,16 +1,15 @@
 import copy
-import json
-import socket
+
+import requests
 import tkinter as tk
 from tkinter import filedialog, messagebox, ttk
 from PIL import Image, ImageTk
 import os
+import threading
 
+from src.fastapi_server import start_fastapi, stop_fastapi, set_port
+from src.handle import load_images, get_image, delete_image, get_label, save_label, base64_to_image
 from src.ocr import load_ocr_model
-
-# import requests
-# import asyncio
-# import websockets
 
 
 class SettingsDialog(tk.Toplevel):
@@ -71,6 +70,7 @@ class SettingsDialog(tk.Toplevel):
         save_button.pack(pady=20)
 
         # get local IP address
+        import socket
         my_ip = socket.gethostbyname(socket.gethostname())
         self.ip_address_entry.insert(0, my_ip)
 
@@ -99,7 +99,7 @@ class OCRLabelingTool(tk.Tk):
         self.is_open_server = False
         self.is_connect_to_server = False
         self.port = 8000
-        self.base_url = "http://192.168.6.9:8000"
+        self.base_url = "http://127.0.0.1:8000"
 
         # Thiết lập cửa sổ chính
         self.title("OCR Labeling Tool")
@@ -127,27 +127,6 @@ class OCRLabelingTool(tk.Tk):
 
         self.bind("<Configure>", self.on_resize)
         self.resize_after_id = None
-
-    #     self.server_url = "http://localhost:8000"
-
-    # def open_image_folder_click(self):
-    #     folder_path = filedialog.askdirectory()
-    #     if folder_path:
-    #         self.image_folder = folder_path
-    #         response = requests.post(f"{self.server_url}/load_images", json={"image_folder": folder_path})
-    #         self.image_list = response.json().get("images", [])
-    #         self.load_images_click()
-    #         self.display_image_click()
-    #
-    # def save_label_click(self):
-    #     self.text_entry.focus_set()
-    #     label = self.text_entry.get()
-    #     requests.post(f"{self.server_url}/save_label", json={"image_filename": self.image_filename, "label": label})
-    #     self.old_label_value = label
-    #
-    # def load_label_file(self, image_filename):
-    #     response = requests.get(f"{self.server_url}/get_label", params={"image_filename": image_filename})
-    #     return response.json().get("label", "")
 
     def create_widgets(self):
         # Cột 1: Khu vực bên trái
@@ -276,13 +255,19 @@ class OCRLabelingTool(tk.Tk):
         right_frame.rowconfigure(3, weight=1)
         right_frame.columnconfigure(0, weight=1)
 
+    def start_server(self):
+        set_port(self.port)
+        self.fastapi_thread = threading.Thread(target=start_fastapi, daemon=True)
+        self.fastapi_thread.start()
+
+    def stop_server(self):
+        stop_fastapi()
+
     def on_resize(self, _):
-        print('resize_after_id', self.resize_after_id)
         self.fixed_canvas_size = (self.center_frame.winfo_width() - 25, self.center_frame.winfo_height() - 110)
         self.canvas.config(width=self.fixed_canvas_size[0], height=self.fixed_canvas_size[1])
 
         if self.resize_after_id:
-            print('cancel')
             self.after_cancel(self.resize_after_id)
         self.resize_after_id = self.after(50, self.perform_resize)
 
@@ -305,24 +290,30 @@ class OCRLabelingTool(tk.Tk):
             if is_connect_to_server_old_value:
                 self.add_log("Disconnect from another server")
             self.add_log(f"Open server at port {self.port}")
+            self.start_server()
+        else:
+            if is_open_server_old_value:
+                self.add_log("Close server")
+                self.stop_server()
+
+        if self.is_connect_to_server:
+            self.add_log(f"Connect to server at {self.base_url}")
+            self.load_images_click()
+            self.display_image_click()
+
+            # disable button
+            self.open_image_folder_button.config(state=tk.DISABLED)
+            self.open_label_folder_button.config(state=tk.DISABLED)
+            self.open_recycle_bin_folder_button.config(state=tk.DISABLED)
+            self.auto_ocr_all_button.config(state=tk.DISABLED)
+        else:
             # enable button
             self.open_image_folder_button.config(state=tk.NORMAL)
             self.open_label_folder_button.config(state=tk.NORMAL)
             self.open_recycle_bin_folder_button.config(state=tk.NORMAL)
             self.auto_ocr_all_button.config(state=tk.NORMAL)
 
-        elif self.is_connect_to_server:
-            if is_open_server_old_value:
-                self.add_log("Close server")
-            self.add_log(f"Connect to server at {self.base_url}")
-            # disable button
-            self.open_image_folder_button.config(state=tk.DISABLED)
-            self.open_label_folder_button.config(state=tk.DISABLED)
-            self.open_recycle_bin_folder_button.config(state=tk.DISABLED)
-            self.auto_ocr_all_button.config(state=tk.DISABLED)
-
     def perform_resize(self):
-        print('perform_resize')
         self.display_image_click()
 
     def on_model_change(self, _):
@@ -406,49 +397,73 @@ class OCRLabelingTool(tk.Tk):
             self.add_log(f"Open recycle bin folder: {folder_path}")
 
     def load_images_click(self):
-        # Load danh sách ảnh
-        if self.image_folder:
-            self.image_list = [f for f in os.listdir(self.image_folder) if f.lower().endswith(('png', 'jpg', 'jpeg'))]
-            # Hiển thị lên listbox
-            self.file_listbox.delete(0, tk.END)
-            for i, image_filename in enumerate(self.image_list):
-                self.file_listbox.insert(tk.END, f"{i + 1}) {image_filename}")
+        # TODO: Load danh sách ảnh
+        if self.is_connect_to_server:
+            self.add_log("Load images from server")
+            try:
+                response = requests.get(f"{self.base_url}/load_images")
+                self.image_list = response.json().get("images", [])
+            except Exception as e:
+                self.add_log(f"Error when load images from server: {e}")
+                self.image_list = []
+
+        else:
+            # Load danh sách ảnh
+            if self.image_folder:
+                self.image_list = load_images()
+
+        # Hiển thị lên listbox
+        self.file_listbox.delete(0, tk.END)
+        for i, image_filename in enumerate(self.image_list):
+            self.file_listbox.insert(tk.END, f"{i + 1}) {image_filename}")
 
     def display_image_click(self):
-        if self.image_list and 0 <= self.current_image_index < len(self.image_list):
-            self.image_filename = self.image_list[self.current_image_index]
-            self.title(
-                f"OCR Labeling Tool ({self.current_image_index + 1}/{len(self.image_list)}) - {self.image_filename}")
-            self.add_log(f"Open: {self.image_filename}")
-            image_path = os.path.join(self.image_folder, self.image_filename)
-            image = Image.open(image_path)
-            self.image = copy.deepcopy(image)
-
-            self.old_label_value = self.load_label_file(self.image_filename)
-            self.set_text_entry_value(self.old_label_value)
-
-            # Handle zoom level
-            zoom_value = self.zoom_level.get()
-            if zoom_value == "Auto":
-                zoom_percentage = 300
-                image = image.resize(
-                    (int(image.width * zoom_percentage / 100), int(image.height * zoom_percentage / 100)),
-                    Image.Resampling.LANCZOS
-                )
-                if image.width > self.fixed_canvas_size[0] or image.height > self.fixed_canvas_size[1]:
-                    image.thumbnail(self.fixed_canvas_size, Image.Resampling.LANCZOS)
-            else:
-                zoom_percentage = int(zoom_value.replace("%", ""))
-                image = image.resize(
-                    (int(image.width * zoom_percentage / 100), int(image.height * zoom_percentage / 100)),
-                    Image.Resampling.LANCZOS)
-
-            # Display image on canvas
-            self.canvas_image = ImageTk.PhotoImage(image)
-            self.canvas.create_image(self.fixed_canvas_size[0] // 2, self.fixed_canvas_size[1] // 2,
-                                     image=self.canvas_image, anchor='center')
-        else:
+        # TODO: Load ảnh
+        if not (self.image_list and 0 <= self.current_image_index < len(self.image_list)):
             self.title("OCR Labeling Tool")
+            return
+
+        self.image_filename = self.image_list[self.current_image_index]
+        self.title(f"OCR Labeling Tool ({self.current_image_index + 1}/{len(self.image_list)}) - {self.image_filename}")
+        self.add_log(f"Open: {self.image_filename}")
+
+        if self.is_connect_to_server:
+            self.add_log(f"Get image from server")
+            try:
+                response = requests.get(f"{self.base_url}/get_image", params={"image_filename": self.image_filename})
+                image_base64 = response.json().get("image", "")
+                image = base64_to_image(image_base64)
+            except Exception as e:
+                self.add_log(f"Error when get image from server: {e}")
+                return
+        else:
+            image = get_image(self.image_filename)
+
+        self.image = copy.deepcopy(image)
+
+        self.old_label_value = self.load_label_file(self.image_filename)
+        self.set_text_entry_value(self.old_label_value)
+
+        # Handle zoom level
+        zoom_value = self.zoom_level.get()
+        if zoom_value == "Auto":
+            zoom_percentage = 300
+            image = image.resize(
+                (int(image.width * zoom_percentage / 100), int(image.height * zoom_percentage / 100)),
+                Image.Resampling.LANCZOS
+            )
+            if image.width > self.fixed_canvas_size[0] or image.height > self.fixed_canvas_size[1]:
+                image.thumbnail(self.fixed_canvas_size, Image.Resampling.LANCZOS)
+        else:
+            zoom_percentage = int(zoom_value.replace("%", ""))
+            image = image.resize(
+                (int(image.width * zoom_percentage / 100), int(image.height * zoom_percentage / 100)),
+                Image.Resampling.LANCZOS)
+
+        # Display image on canvas
+        self.canvas_image = ImageTk.PhotoImage(image)
+        self.canvas.create_image(self.fixed_canvas_size[0] // 2, self.fixed_canvas_size[1] // 2,
+                                 image=self.canvas_image, anchor='center')
 
     def next_image_click(self):
         self.text_entry.focus_set()
@@ -489,34 +504,26 @@ class OCRLabelingTool(tk.Tk):
         self.save_label_file(self.image_filename, self.text_entry.get())
         self.old_label_value = self.text_entry.get()
 
-    @staticmethod
-    def get_label_filename(image_filename):
-        return image_filename.rsplit(".", maxsplit=1)[0] + ".json"
-
     def delete_img_click(self):
-        if self.recycle_bin_folder is None or self.recycle_bin_folder == "" or self.image_folder is None or self.image_folder == "":
-            messagebox.showerror("Error", "Recycle bin folder is not set")
-            return
+        # TODO: Xóa ảnh
+        # if self.recycle_bin_folder is None or self.recycle_bin_folder == "" or self.image_folder is None or self.image_folder == "":
+        #     messagebox.showerror("Error", "Recycle bin folder is not set")
+        #     return
         if not messagebox.askyesno("Delete Image", "Do you want to delete this image?"):
             return
 
-        if not os.path.exists(self.recycle_bin_folder):
-            os.makedirs(self.recycle_bin_folder)
-
-        if self.image_filename:
+        if self.is_connect_to_server:
             self.add_log(f"Delete {self.image_filename}")
-            # delete image
-            image_path = os.path.join(self.image_folder, self.image_filename)
-            recycle_bin_path = os.path.join(self.recycle_bin_folder, self.image_filename)
-            os.rename(image_path, recycle_bin_path)
-            # delete label
-            label_filename = self.get_label_filename(self.image_filename)
-            label_path = os.path.join(self.label_folder, label_filename)
-            if os.path.exists(label_path):
-                recycle_bin_label_path = os.path.join(self.recycle_bin_folder, label_filename)
-                os.rename(label_path, recycle_bin_label_path)
-            self.load_images_click()
-            self.display_image_click()
+            response = requests.delete(f"{self.base_url}/delete_image", params={"image_filename": self.image_filename})
+            if not response.status_code == 200:
+                self.add_log(f"Error when delete image: {response.text}")
+                return
+        else:
+            delete_image(self.image_filename)
+
+        self.add_log(f"Delete {self.image_filename}")
+        self.load_images_click()
+        self.display_image_click()
 
     def auto_ocr_click(self):
         if self.image is None:
@@ -564,25 +571,29 @@ class OCRLabelingTool(tk.Tk):
         self.add_log("Auto OCR all files done")
 
     def save_label_file(self, image_filename: str, text: str):
-        if self.label_folder is None or self.label_folder == "" or self.image_folder is None or self.image_folder == "":
-            messagebox.showerror("Error", "Image folder or Label folder is not set")
+        # TODO: Lưu nhãn
+        if self.is_connect_to_server:
+            response = requests.post(f"{self.base_url}/save_label", json={"image_filename": image_filename, "label": text})
+            if response.status_code == 200:
+                self.add_log(f"Save label for {image_filename}")
+            else:
+                self.add_log(f"Error when save label: {response.text}")
             return
+
+        # if self.label_folder is None or self.label_folder == "" or self.image_folder is None or self.image_folder == "":
+        #     messagebox.showerror("Error", "Image folder or Label folder is not set")
+        #     return
         self.add_log(f"Save label for {image_filename}")
-        json_path = os.path.join(self.label_folder, self.get_label_filename(image_filename))
-        content = {
-            "image_path": image_filename,
-            "label": text
-        }
-        with open(json_path, 'w') as f:
-            f.write(json.dumps(content))
+        save_label(image_filename, text)
 
     def load_label_file(self, image_filename):
-        json_path = os.path.join(self.label_folder, self.get_label_filename(image_filename))
-        if os.path.exists(json_path):
-            with open(json_path, 'r') as f:
-                content = json.load(f)
-            return content["label"]
-        return ""
+        # TODO: Load nhãn
+        if self.is_connect_to_server:
+            self.add_log(f"Load label for {image_filename}")
+            response = requests.get(f"{self.base_url}/get_label", params={"image_filename": image_filename})
+            return response.json().get("label", "")
+
+        return get_label(image_filename)
 
     def on_image_select(self, event):
         # Lấy chỉ số của mục được chọn
@@ -590,8 +601,3 @@ class OCRLabelingTool(tk.Tk):
         if selected_index:
             self.current_image_index = selected_index[0]
             self.display_image_click()
-
-
-if __name__ == "__main__":
-    app = OCRLabelingTool()
-    app.mainloop()
