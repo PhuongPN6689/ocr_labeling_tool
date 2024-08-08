@@ -30,7 +30,7 @@ async def _load_images():
 @app.get("/get_image")
 async def _get_image(image_filename: str):
     image = get_image(image_filename)
-    img_str = image_to_base64(image)
+    img_str = image_to_base64(image, image_filename)
     return JSONResponse(content={"image": img_str})
 
 

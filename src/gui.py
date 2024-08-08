@@ -1,14 +1,13 @@
 import copy
+import logging
 
-import requests
 import tkinter as tk
 from tkinter import filedialog, messagebox, ttk
 from PIL import Image, ImageTk
 import os
 import threading
 
-from src.fastapi_server import start_fastapi, stop_fastapi, set_port
-from src.handle import load_images, get_image, delete_image, get_label, save_label, base64_to_image
+from src.handle import load_images, get_image, delete_image, get_label, save_label, base64_to_image, BaseApp
 from src.ocr import load_ocr_model
 
 
@@ -92,7 +91,7 @@ class SettingsDialog(tk.Toplevel):
         self.destroy()
 
 
-class OCRLabelingTool(tk.Tk):
+class OCRLabelingTool(tk.Tk, BaseApp):
     def __init__(self):
         super().__init__()
 
@@ -263,11 +262,13 @@ class OCRLabelingTool(tk.Tk):
         right_frame.columnconfigure(0, weight=1)
 
     def start_server(self):
+        from src.fastapi_server import start_fastapi, set_port
         set_port(self.port)
         self.fastapi_thread = threading.Thread(target=start_fastapi, daemon=True)
         self.fastapi_thread.start()
 
     def stop_server(self):
+        from src.fastapi_server import stop_fastapi
         stop_fastapi()
 
     def on_resize(self, _):
@@ -293,34 +294,42 @@ class OCRLabelingTool(tk.Tk):
         self.apply_server_settings(is_connect_to_server_old_value, is_open_server_old_value)
 
     def apply_server_settings(self, is_connect_to_server_old_value, is_open_server_old_value):
-        if self.is_open_server:
-            if is_connect_to_server_old_value:
-                self.add_log("Disconnect from another server")
-            self.add_log(f"Open server at port {self.port}")
-            self.start_server()
-        else:
-            if is_open_server_old_value:
-                self.add_log("Close server")
-                self.stop_server()
+        if self.is_open_server != is_open_server_old_value:
+            if self.is_open_server:
+                if is_connect_to_server_old_value:
+                    self.add_log("Disconnect from another server")
+                self.add_log(f"Open server at port {self.port}")
+                self.start_server()
+            else:
+                if is_open_server_old_value:
+                    self.add_log("Close server")
+                    self.stop_server()
 
-        if self.is_connect_to_server:
-            self.add_log(f"Connect to server at {self.base_url}")
-            self.load_images_click()
-            self.display_image_click()
+        if self.is_connect_to_server != is_connect_to_server_old_value:
+            if self.is_connect_to_server:
+                try:
+                    from src.call_to_server import test_connection
+                    test_connection()
+                except Exception as e:
+                    self.add_log(f"Error when connect to server: {e}")
+                    self.is_connect_to_server = False
+                    return
+                self.add_log(f"Connect to server at {self.base_url}")
+                self.load_images_click()
 
-            # disable button
-            self.open_image_folder_button.config(state=tk.DISABLED)
-            self.open_label_folder_button.config(state=tk.DISABLED)
-            self.open_recycle_bin_folder_button.config(state=tk.DISABLED)
-            self.auto_ocr_all_button.config(state=tk.DISABLED)
-            self.check_error_button.config(state=tk.DISABLED)
-        else:
-            # enable button
-            self.open_image_folder_button.config(state=tk.NORMAL)
-            self.open_label_folder_button.config(state=tk.NORMAL)
-            self.open_recycle_bin_folder_button.config(state=tk.NORMAL)
-            self.auto_ocr_all_button.config(state=tk.NORMAL)
-            self.check_error_button.config(state=tk.NORMAL)
+                # disable button
+                self.open_image_folder_button.config(state=tk.DISABLED)
+                self.open_label_folder_button.config(state=tk.DISABLED)
+                self.open_recycle_bin_folder_button.config(state=tk.DISABLED)
+                self.auto_ocr_all_button.config(state=tk.DISABLED)
+                self.check_error_button.config(state=tk.DISABLED)
+            else:
+                # enable button
+                self.open_image_folder_button.config(state=tk.NORMAL)
+                self.open_label_folder_button.config(state=tk.NORMAL)
+                self.open_recycle_bin_folder_button.config(state=tk.NORMAL)
+                self.auto_ocr_all_button.config(state=tk.NORMAL)
+                self.check_error_button.config(state=tk.NORMAL)
 
     def perform_resize(self):
         self.cancel_update_saved_label = True
@@ -397,7 +406,6 @@ class OCRLabelingTool(tk.Tk):
         if is_new_img_folder:
             self.current_image_index = 0
             self.load_images_click()
-            self.display_image_click()
 
     def open_label_folder_click(self):
         # Mở thư mục chứa nhãn
@@ -419,9 +427,11 @@ class OCRLabelingTool(tk.Tk):
         if self.is_connect_to_server:
             self.add_log("Load images from server")
             try:
-                response = requests.get(f"{self.base_url}/load_images")
+                from src.call_to_server import get_data
+                response = get_data("load_images")
                 self.image_list = response.json().get("images", [])
             except Exception as e:
+                logging.exception(e)
                 self.add_log(f"Error when load images from server: {e}")
                 self.image_list = []
 
@@ -434,6 +444,12 @@ class OCRLabelingTool(tk.Tk):
         self.file_listbox.delete(0, tk.END)
         for i, image_filename in enumerate(self.image_list):
             self.file_listbox.insert(tk.END, f"{i + 1}) {image_filename}")
+
+        if self.image_filename in self.image_list:
+            self.current_image_index = self.image_list.index(self.image_filename)
+        else:
+            self.current_image_index = 0
+        self.display_image_click()
 
     def check_error_click(self):
         image_list = load_images()
@@ -471,10 +487,12 @@ class OCRLabelingTool(tk.Tk):
         if self.is_connect_to_server:
             self.add_log(f"Get image from server")
             try:
-                response = requests.get(f"{self.base_url}/get_image", params={"image_filename": self.image_filename})
+                from src.call_to_server import get_data
+                response = get_data("get_image", params={"image_filename": self.image_filename})
                 image_base64 = response.json().get("image", "")
                 image = base64_to_image(image_base64)
             except Exception as e:
+                logging.exception(e)
                 self.add_log(f"Error when get image from server: {e}")
                 return
         else:
@@ -557,7 +575,8 @@ class OCRLabelingTool(tk.Tk):
 
         if self.is_connect_to_server:
             self.add_log(f"Delete {self.image_filename}")
-            response = requests.delete(f"{self.base_url}/delete_image", params={"image_filename": self.image_filename})
+            from src.call_to_server import delete_data
+            response = delete_data("delete_image", params={"image_filename": self.image_filename})
             if not response.status_code == 200:
                 self.add_log(f"Error when delete image: {response.text}")
                 return
@@ -566,7 +585,6 @@ class OCRLabelingTool(tk.Tk):
 
         self.add_log(f"Delete {self.image_filename}")
         self.load_images_click()
-        self.display_image_click()
 
     def auto_ocr_click(self):
         if self.image is None:
@@ -616,7 +634,8 @@ class OCRLabelingTool(tk.Tk):
     def save_label_file(self, image_filename: str, text: str):
         # TODO: Lưu nhãn
         if self.is_connect_to_server:
-            response = requests.post(f"{self.base_url}/save_label", json={"image_filename": image_filename, "label": text})
+            from src.call_to_server import post_data
+            response = post_data("save_label", json={"image_filename": image_filename, "label": text})
             if response.status_code == 200:
                 self.add_log(f"Save label for {image_filename}")
             else:
@@ -633,7 +652,8 @@ class OCRLabelingTool(tk.Tk):
         # TODO: Load nhãn
         if self.is_connect_to_server:
             self.add_log(f"Load label for {image_filename}")
-            response = requests.get(f"{self.base_url}/get_label", params={"image_filename": image_filename})
+            from src.call_to_server import get_data
+            response = get_data("get_label", params={"image_filename": image_filename})
             return response.json().get("label", "")
 
         return get_label(image_filename)

@@ -5,7 +5,16 @@ from io import BytesIO
 
 from PIL import Image
 
-external_data = None
+
+class BaseApp():
+    def __init__(self):
+        self.image_folder = None
+        self.label_folder = None
+        self.recycle_bin_folder = None
+        self.base_url = None
+
+
+external_data = BaseApp()
 
 
 def set_external_data(data):
@@ -63,9 +72,12 @@ def delete_image(image_filename):
             os.rename(label_path, recycle_bin_label_path)
 
 
-def image_to_base64(image: Image, format='PNG') -> str:
+def image_to_base64(image: Image, image_filename: str) -> str:
     buffered = BytesIO()
-    image.save(buffered, format=format)
+    image_format = image_filename.split(".")[-1]
+    image_format = image_format if image_format in ["png", "jpeg", "jpg"] else "png"
+    image_format = "jpeg" if image_format.lower() == "jpg" else image_format
+    image.save(buffered, format=image_format)
     img_str = base64.b64encode(buffered.getvalue()).decode('utf-8')
     return img_str
 
