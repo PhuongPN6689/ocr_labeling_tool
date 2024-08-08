@@ -8,10 +8,17 @@ from PIL import Image
 
 class BaseApp():
     def __init__(self):
+        self.is_open_server = None
+        self.is_connect_to_server = None
+        self.port = None
+        self.base_url = None
+
         self.image_folder = None
         self.label_folder = None
         self.recycle_bin_folder = None
-        self.base_url = None
+
+    def restore_session(self):
+        pass
 
 
 external_data = BaseApp()
@@ -20,6 +27,7 @@ external_data = BaseApp()
 def set_external_data(data):
     global external_data
     external_data = data
+    external_data.restore_session()
 
 
 def load_images():
@@ -85,3 +93,15 @@ def image_to_base64(image: Image, image_filename: str) -> str:
 def base64_to_image(img_str: str) -> Image:
     img_data = base64.b64decode(img_str)
     return Image.open(BytesIO(img_data))
+
+
+def save_settings(settings, filename='settings.json'):
+    with open(filename, 'w') as f:
+        json.dump(settings, f)
+
+
+def load_settings(filename='settings.json'):
+    if os.path.exists(filename):
+        with open(filename, 'r') as f:
+            return json.load(f)
+    return {}

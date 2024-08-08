@@ -1,4 +1,5 @@
 import copy
+import json
 import logging
 
 import tkinter as tk
@@ -7,7 +8,8 @@ from PIL import Image, ImageTk
 import os
 import threading
 
-from src.handle import load_images, get_image, delete_image, get_label, save_label, base64_to_image, BaseApp
+from src.handle import load_images, get_image, delete_image, get_label, save_label, base64_to_image, BaseApp, \
+    load_settings, save_settings
 from src.ocr import load_ocr_model
 
 
@@ -127,6 +129,41 @@ class OCRLabelingTool(tk.Tk, BaseApp):
         self.cancel_update_saved_label = False
         self.bind("<Configure>", self.on_resize)
         self.resize_after_id = None
+
+    def restore_session(self):
+        settings = load_settings()
+
+        if settings:
+            restore_session = messagebox.askyesno("Restore Session",
+                                                  f"Do you want to restore the previous session with these settings?\n\n{json.dumps(settings, indent=4)}")
+        else:
+            restore_session = False
+
+        if restore_session:
+            self.is_open_server = settings.get('is_open_server', self.is_open_server)
+            self.is_connect_to_server = settings.get('is_connect_to_server', self.is_connect_to_server)
+            self.port = settings.get('port', self.port)
+            self.base_url = settings.get('base_url', self.base_url)
+            self.image_folder = settings.get('image_folder', self.image_folder)
+            self.label_folder = settings.get('label_folder', self.label_folder)
+            self.recycle_bin_folder = settings.get('recycle_bin_folder', self.recycle_bin_folder)
+
+            self.load_images_click()
+            self.apply_server_settings(False, False)
+            self.add_log("Restore session successfully")
+
+    def auto_save_session(self):
+        # Save settings on exit
+        settings = {
+            'is_open_server': self.is_open_server,
+            'is_connect_to_server': self.is_connect_to_server,
+            'port': self.port,
+            'base_url': self.base_url,
+            'image_folder': self.image_folder,
+            'label_folder': self.label_folder,
+            'recycle_bin_folder': self.recycle_bin_folder,
+        }
+        save_settings(settings)
 
     def create_widgets(self):
         # Cột 1: Khu vực bên trái
@@ -291,6 +328,7 @@ class OCRLabelingTool(tk.Tk, BaseApp):
         self.is_open_server = settings_window.is_open_server
         self.base_url = settings_window.base_url
 
+        self.auto_save_session()
         self.apply_server_settings(is_connect_to_server_old_value, is_open_server_old_value)
 
     def apply_server_settings(self, is_connect_to_server_old_value, is_open_server_old_value):
@@ -423,7 +461,7 @@ class OCRLabelingTool(tk.Tk, BaseApp):
             self.add_log(f"Open recycle bin folder: {folder_path}")
 
     def load_images_click(self):
-        # TODO: Load danh sách ảnh
+        self.auto_save_session()
         if self.is_connect_to_server:
             self.add_log("Load images from server")
             try:
@@ -475,7 +513,6 @@ class OCRLabelingTool(tk.Tk, BaseApp):
         self.display_image_click()
 
     def display_image_click(self):
-        # TODO: Load ảnh
         if not (self.image_list and 0 <= self.current_image_index < len(self.image_list)):
             self.title("OCR Labeling Tool")
             return
@@ -566,7 +603,6 @@ class OCRLabelingTool(tk.Tk, BaseApp):
         self.old_label_value = self.text_entry.get()
 
     def delete_img_click(self):
-        # TODO: Xóa ảnh
         # if self.recycle_bin_folder is None or self.recycle_bin_folder == "" or self.image_folder is None or self.image_folder == "":
         #     messagebox.showerror("Error", "Recycle bin folder is not set")
         #     return
@@ -593,12 +629,6 @@ class OCRLabelingTool(tk.Tk, BaseApp):
         # Nhận diện chữ
         text = self.run_ocr(self.image)
         self.set_text_entry_value(text)
-
-    def copy_filename_click(self):
-        if self.image_filename:
-            self.clipboard_clear()
-            self.clipboard_append(self.image_filename)
-            self.update()
 
     @staticmethod
     def help_click():
@@ -632,7 +662,6 @@ class OCRLabelingTool(tk.Tk, BaseApp):
         self.add_log("Auto OCR all files done")
 
     def save_label_file(self, image_filename: str, text: str):
-        # TODO: Lưu nhãn
         if self.is_connect_to_server:
             from src.call_to_server import post_data
             response = post_data("save_label", json={"image_filename": image_filename, "label": text})
