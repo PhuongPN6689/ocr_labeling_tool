@@ -125,6 +125,7 @@ class OCRLabelingTool(tk.Tk):
         self.create_widgets()
         self.bind_keys()
 
+        self.cancel_update_saved_label = False
         self.bind("<Configure>", self.on_resize)
         self.resize_after_id = None
 
@@ -201,6 +202,9 @@ class OCRLabelingTool(tk.Tk):
         next_image_button = tk.Button(button_frame, text="Next Image ⇨", compound=tk.TOP, command=self.next_image_click)
         next_image_button.pack(side="left", padx=5, pady=5)
 
+        delete_img_button = tk.Button(button_frame, text="Delete Image", command=self.delete_img_click)
+        delete_img_button.pack(side="left", padx=5, pady=5)
+
         tk.Frame(button_frame).pack(side="left", fill="x")
 
         save_button = tk.Button(button_frame, text="Save", command=self.save_label_click)
@@ -209,11 +213,11 @@ class OCRLabelingTool(tk.Tk):
         self.text_entry = tk.Entry(button_frame, font=("Consolas", 14))
         self.text_entry.pack(side="right", padx=5, pady=5)
 
+        cancel_button = tk.Button(button_frame, text="Cancel change", command=self.cancel_change)
+        cancel_button.pack(side="right", padx=5, pady=5)
+
         auto_ocr_button = tk.Button(button_frame, text="Auto OCR", command=self.auto_ocr_click)
         auto_ocr_button.pack(side="right", padx=5, pady=5)
-
-        save_button = tk.Button(button_frame, text="Delete", command=self.delete_img_click)
-        save_button.pack(side="right", padx=5, pady=5)
 
         # Khu vực hiển thị ảnh với kích thước cố định
         self.canvas = tk.Canvas(center_frame, width=self.fixed_canvas_size[0], height=self.fixed_canvas_size[1])
@@ -319,6 +323,7 @@ class OCRLabelingTool(tk.Tk):
             self.check_error_button.config(state=tk.NORMAL)
 
     def perform_resize(self):
+        self.cancel_update_saved_label = True
         self.display_image_click()
 
     def on_model_change(self, _):
@@ -352,6 +357,12 @@ class OCRLabelingTool(tk.Tk):
             self.status_label.insert(tk.END, "⇨" + log + "\n")
         self.update()
 
+    def enter_pressed(self):
+        if self.text_entry.get() == self.old_label_value:
+            self.next_image_click()
+        else:
+            self.save_label_click()
+
     def bind_keys(self):
         self.bind('<F4>', lambda event: self.prev_image_click())
         self.bind('<Prior>', lambda event: self.prev_image_click())
@@ -360,7 +371,7 @@ class OCRLabelingTool(tk.Tk):
         self.bind('<Next>', lambda event: self.next_image_click())
 
         self.bind('<Control-S>', lambda event: self.save_label_click())
-        self.bind('<Return>', lambda event: self.save_label_click())
+        self.bind('<Return>', lambda event: self.enter_pressed())
 
         self.bind('<F1>', lambda event: self.help_click())
         self.bind('<Escape>', lambda event: self.cancel_change())
@@ -394,6 +405,7 @@ class OCRLabelingTool(tk.Tk):
         if folder_path:
             self.label_folder = folder_path
             self.add_log(f"Open label folder: {folder_path}")
+            self.display_image_click()
 
     def open_recycle_bin_click(self):
         # Mở thư mục chứa nhãn
@@ -470,8 +482,10 @@ class OCRLabelingTool(tk.Tk):
 
         self.image = copy.deepcopy(image)
 
-        self.old_label_value = self.load_label_file(self.image_filename)
-        self.set_text_entry_value(self.old_label_value)
+        if not self.cancel_update_saved_label:
+            self.old_label_value = self.load_label_file(self.image_filename)
+            self.set_text_entry_value(self.old_label_value)
+        self.cancel_update_saved_label = False
 
         # Handle zoom level
         zoom_value = self.zoom_level.get()
