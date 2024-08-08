@@ -158,6 +158,9 @@ class OCRLabelingTool(tk.Tk):
         self.auto_ocr_all_button = tk.Button(left_frame, text="Auto OCR All File", command=self.auto_ocr_all_click)
         self.auto_ocr_all_button.pack(pady=10, fill="x")
 
+        self.check_error_button = tk.Button(left_frame, text="Check Error", command=self.check_error_click)
+        self.check_error_button.pack(pady=10, fill="x")
+
         tk.Frame(left_frame).pack(fill="x", pady=15)
 
         server_settings_button = tk.Button(left_frame, text="Server setting", command=self.open_server_settings_click)
@@ -306,12 +309,14 @@ class OCRLabelingTool(tk.Tk):
             self.open_label_folder_button.config(state=tk.DISABLED)
             self.open_recycle_bin_folder_button.config(state=tk.DISABLED)
             self.auto_ocr_all_button.config(state=tk.DISABLED)
+            self.check_error_button.config(state=tk.DISABLED)
         else:
             # enable button
             self.open_image_folder_button.config(state=tk.NORMAL)
             self.open_label_folder_button.config(state=tk.NORMAL)
             self.open_recycle_bin_folder_button.config(state=tk.NORMAL)
             self.auto_ocr_all_button.config(state=tk.NORMAL)
+            self.check_error_button.config(state=tk.NORMAL)
 
     def perform_resize(self):
         self.display_image_click()
@@ -330,7 +335,8 @@ class OCRLabelingTool(tk.Tk):
         elif self.model_name == "Tesseract":
             return self.ocr_model(image)
         else:
-            return self.text_entry.get()
+            messagebox.showerror("Error", "Please select OCR model")
+            raise ValueError("Please select OCR model")
 
     def cancel_change(self):
         self.text_entry.focus_set()
@@ -416,6 +422,29 @@ class OCRLabelingTool(tk.Tk):
         self.file_listbox.delete(0, tk.END)
         for i, image_filename in enumerate(self.image_list):
             self.file_listbox.insert(tk.END, f"{i + 1}) {image_filename}")
+
+    def check_error_click(self):
+        image_list = load_images()
+        self.image_list = []
+        self.file_listbox.delete(0, tk.END)
+        count = 0
+        for i, image_filename in enumerate(image_list):
+            self.add_log(f"Check error {i + 1}/{len(image_list)}, {count} images have error")
+            old_label = self.load_label_file(image_filename)
+            image_path = os.path.join(self.image_folder, image_filename)
+            image = Image.open(image_path)
+            new_label = self.run_ocr(image)
+            if old_label != new_label:
+                count += 1
+                self.image_list.append(image_filename)
+                self.file_listbox.insert(tk.END, f"{count}) {image_filename}")
+
+        # Hiển thị lên listbox
+        self.file_listbox.delete(0, tk.END)
+        for i, image_filename in enumerate(self.image_list):
+            self.file_listbox.insert(tk.END, f"{i + 1}) {image_filename}")
+        self.current_image_index = 0
+        self.display_image_click()
 
     def display_image_click(self):
         # TODO: Load ảnh
