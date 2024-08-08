@@ -133,20 +133,40 @@ class OCRLabelingTool(tk.Tk, BaseApp):
     def restore_session(self):
         settings = load_settings()
 
+        is_open_server = settings.get('is_open_server', self.is_open_server)
+        is_connect_to_server = settings.get('is_connect_to_server', self.is_connect_to_server)
+        port = settings.get('port', self.port)
+        base_url = settings.get('base_url', self.base_url)
+        image_folder = settings.get('image_folder', self.image_folder)
+        label_folder = settings.get('label_folder', self.label_folder)
+        recycle_bin_folder = settings.get('recycle_bin_folder', self.recycle_bin_folder)
+
         if settings:
-            restore_session = messagebox.askyesno("Restore Session",
-                                                  f"Do you want to restore the previous session with these settings?\n\n{json.dumps(settings, indent=4)}")
+            old_session_message = f"Previous session found with these settings:\n\n"
+            if is_connect_to_server:
+                is_open_server = False
+                old_session_message += f"Connect to server at {base_url}\n"
+            else:
+                if is_open_server:
+                    old_session_message += f"Open server at port {port}\n"
+                if image_folder:
+                    old_session_message += f"Image folder: {image_folder}\n"
+                if label_folder:
+                    old_session_message += f"Label folder: {label_folder}\n"
+                if recycle_bin_folder:
+                    old_session_message += f"Recycle bin folder: {recycle_bin_folder}\n"
+            restore_session = messagebox.askyesno("Restore Session", old_session_message, parent=self)
         else:
             restore_session = False
 
         if restore_session:
-            self.is_open_server = settings.get('is_open_server', self.is_open_server)
-            self.is_connect_to_server = settings.get('is_connect_to_server', self.is_connect_to_server)
-            self.port = settings.get('port', self.port)
-            self.base_url = settings.get('base_url', self.base_url)
-            self.image_folder = settings.get('image_folder', self.image_folder)
-            self.label_folder = settings.get('label_folder', self.label_folder)
-            self.recycle_bin_folder = settings.get('recycle_bin_folder', self.recycle_bin_folder)
+            self.is_open_server = is_open_server
+            self.is_connect_to_server = is_connect_to_server
+            self.port = port
+            self.base_url = base_url
+            self.image_folder = image_folder
+            self.label_folder = label_folder
+            self.recycle_bin_folder = recycle_bin_folder
 
             self.load_images_click()
             self.apply_server_settings(False, False)
