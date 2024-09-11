@@ -653,7 +653,8 @@ class OCRLabelingTool(tk.Tk, BaseApp):
 
     @staticmethod
     def help_click():
-        messagebox.showinfo("Help", "Open Image Folder: Open folder contains images\n"
+        messagebox.showinfo("Help", "List of shortcuts:\n"
+                                    "Open Image Folder: Open folder contains images\n"
                                     "Open Label Folder: Open folder contains labels\n"
                                     "Reload Files: Reload images in the folder\n\n"
                                     "Auto OCR: Auto OCR current image\n"
@@ -663,7 +664,8 @@ class OCRLabelingTool(tk.Tk, BaseApp):
                                     "F4 / Previous / Page up: Previous image\n"
                                     "F5 / Next / Page down: Next image\n"
                                     "Enter / Ctrl+S: Save label\n"
-                                    "Esc: Cancel change")
+                                    "Esc: Cancel change\n\n"
+                                    "If nothing changes, pressing \"Enter\" will move to the next photo.")
 
     def auto_ocr_all_click(self):
         if not self.image_list:
