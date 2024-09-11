@@ -120,6 +120,7 @@ class OCRLabelingTool(tk.Tk, BaseApp):
         self.fixed_canvas_size = (800, 400)  # Kích thước cố định cho khu vực hiển thị ảnh
         self.model_name = None
         self.ocr_model = None
+        self.is_check_error = False
         self.log = []
 
         # Gọi các phương thức để tạo các thành phần giao diện
@@ -481,6 +482,7 @@ class OCRLabelingTool(tk.Tk, BaseApp):
             self.add_log(f"Open recycle bin folder: {folder_path}")
 
     def load_images_click(self):
+        self.is_check_error = False
         self.auto_save_session()
         if self.is_connect_to_server:
             self.add_log("Load images from server")
@@ -510,6 +512,7 @@ class OCRLabelingTool(tk.Tk, BaseApp):
         self.display_image_click()
 
     def check_error_click(self):
+        self.is_check_error = True
         image_list = load_images()
         self.image_list = []
         self.file_listbox.delete(0, tk.END)
@@ -525,10 +528,6 @@ class OCRLabelingTool(tk.Tk, BaseApp):
                 self.image_list.append(image_filename)
                 self.file_listbox.insert(tk.END, f"{count}) {image_filename}")
 
-        # Hiển thị lên listbox
-        self.file_listbox.delete(0, tk.END)
-        for i, image_filename in enumerate(self.image_list):
-            self.file_listbox.insert(tk.END, f"{i + 1}) {image_filename}")
         self.current_image_index = 0
         self.display_image_click()
 
@@ -560,6 +559,8 @@ class OCRLabelingTool(tk.Tk, BaseApp):
         if not self.cancel_update_saved_label:
             self.old_label_value = self.load_label_file(self.image_filename)
             self.set_text_entry_value(self.old_label_value)
+            if self.is_check_error:
+                self.add_log(f"OCR result: {self.run_ocr(image)}")
         self.cancel_update_saved_label = False
 
         # Handle zoom level
